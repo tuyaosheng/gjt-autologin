@@ -1,0 +1,16 @@
+# 含学生身份证号等敏感个人信息，禁止入库
+*.xlsx
+*.xls
+students.dat
+login_code.txt
+
+# 导出的班级包（含真实学生数据）
+班级包/
+dist_packages/
+
+# Python / 打包产物
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
