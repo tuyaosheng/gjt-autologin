@@ -3,13 +3,13 @@
 
 import ctypes
 import os
-import sys
 import threading
 import tkinter as tk
 from collections import Counter
 from tkinter import messagebox
 
 from crypto_utils import decode_roster
+from paths import app_dir
 import roster_data
 
 LOGIN_URL = (
@@ -26,12 +26,6 @@ def acquire_single_instance_lock() -> bool:
     """同一台电脑上只允许一个登录助手在运行；进程结束后系统会自动释放这个锁。"""
     ctypes.windll.kernel32.CreateMutexW(None, False, _SINGLE_INSTANCE_MUTEX_NAME)
     return ctypes.windll.kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
-
-
-def app_dir() -> str:
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
 
 
 def load_login_code() -> str:

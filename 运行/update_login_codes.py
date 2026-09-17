@@ -12,7 +12,9 @@ import os
 
 import openpyxl
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+from paths import app_dir
+
+PROJECT_DIR = app_dir()
 CODE_TABLE_NAME = "便捷登录码.xlsx"
 DIST_DIR = os.path.join(PROJECT_DIR, "dist_output")
 
@@ -46,6 +48,21 @@ def load_codes(xlsx_path: str) -> dict:
     return codes
 
 
+def apply_codes(codes: dict) -> tuple:
+    """把 {班级: 登录码} 写进各班 dist_output 文件夹，返回 (已更新班级列表, 找不到文件夹的班级列表)。"""
+    updated, missing = [], []
+    for class_label, code in codes.items():
+        class_dir = os.path.join(DIST_DIR, class_label)
+        if not os.path.isdir(class_dir):
+            missing.append(class_label)
+            continue
+        login_code_path = os.path.join(class_dir, "login_code.txt")
+        with open(login_code_path, "w", encoding="utf-8") as f:
+            f.write(code)
+        updated.append(class_label)
+    return updated, missing
+
+
 def main():
     xlsx_path = os.path.join(PROJECT_DIR, CODE_TABLE_NAME)
     if not os.path.exists(xlsx_path):
@@ -61,16 +78,7 @@ def main():
         print(f"未找到 {DIST_DIR}，请先用 build_class_exe.py 生成过至少一个班级。")
         return
 
-    updated, missing = [], []
-    for class_label, code in codes.items():
-        class_dir = os.path.join(DIST_DIR, class_label)
-        if not os.path.isdir(class_dir):
-            missing.append(class_label)
-            continue
-        login_code_path = os.path.join(class_dir, "login_code.txt")
-        with open(login_code_path, "w", encoding="utf-8") as f:
-            f.write(code)
-        updated.append(class_label)
+    updated, missing = apply_codes(codes)
 
     print(f"已更新 {len(updated)} 个班级的 login_code.txt：")
     for label in updated:

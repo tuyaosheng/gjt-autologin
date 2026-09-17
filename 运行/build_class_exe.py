@@ -5,15 +5,17 @@
 """
 
 import os
+import shutil
 import subprocess
-import sys
 
 import openpyxl
 
 from crypto_utils import encode_roster
+from paths import app_dir
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = app_dir()
 REQUIRED_COLUMNS = ["年级", "班级", "姓名", "身份证号码"]
+CODE_TABLE_COLUMNS = ["班级", "便捷登录码"]
 
 
 def find_xlsx_candidates():
@@ -22,6 +24,36 @@ def find_xlsx_candidates():
         for f in os.listdir(PROJECT_DIR)
         if f.lower().endswith(".xlsx") and not f.startswith("~$")
     ]
+
+
+def classify_xlsx(xlsx_path: str) -> str:
+    """粗略判断一张表格是学生总表、登录码表，还是认不出来。"""
+    try:
+        wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+        header = next(wb.worksheets[0].iter_rows(values_only=True), None)
+    except Exception:
+        return "unknown"
+    if not header:
+        return "unknown"
+    cols = set(header)
+    if set(REQUIRED_COLUMNS).issubset(cols):
+        return "roster"
+    if set(CODE_TABLE_COLUMNS).issubset(cols):
+        return "codes"
+    return "unknown"
+
+
+def find_system_python() -> str:
+    """查找系统里真正的 Python 解释器（不能用 sys.executable ——
+    manage_panel 打包成 exe 后 sys.executable 会指向自己，而不是 Python）。"""
+    for candidate in ("python", "python3"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    raise RuntimeError(
+        "没有在这台电脑上找到 Python。生成登录程序需要用到系统安装的 Python + PyInstaller，"
+        "请先安装 Python 并运行 pip install -r requirements.txt。"
+    )
 
 
 def load_students(xlsx_path: str):
@@ -84,10 +116,12 @@ def generate_roster_module(roster: dict, class_label: str, out_path: str):
         f.write(content)
 
 
-def run_pyinstaller(exe_name: str, dist_dir: str):
+def run_pyinstaller(exe_name: str, dist_dir: str, log=print):
+    python_cmd = find_system_python()
     driver_path = os.path.join(PROJECT_DIR, "msedgedriver.exe")
+    icon_path = os.path.join(PROJECT_DIR, "login_icon.ico")
     cmd = [
-        sys.executable,
+        python_cmd,
         "-m",
         "PyInstaller",
         "--onefile",
@@ -103,20 +137,25 @@ def run_pyinstaller(exe_name: str, dist_dir: str):
         "--specpath",
         os.path.join(PROJECT_DIR, "build_tmp"),
     ]
+    if os.path.exists(icon_path):
+        cmd += ["--icon", icon_path]
     if os.path.exists(driver_path):
         cmd += ["--add-binary", f"{driver_path};."]
     else:
-        print("提示：未在项目目录找到 msedgedriver.exe，打包后的程序将依赖 Selenium 自动下载驱动"
-              "（需要联网），如果机房电脑联网受限，请下载与 Edge 版本匹配的 msedgedriver.exe"
-              "放到本项目目录后重新构建。")
+        log("提示：未在项目目录找到 msedgedriver.exe，打包后的程序将依赖 Selenium 自动下载驱动"
+            "（需要联网），如果机房电脑联网受限，请下载与 Edge 版本匹配的 msedgedriver.exe"
+            "放到本项目目录后重新构建。")
     cmd.append(os.path.join(PROJECT_DIR, "login_tool.py"))
-    subprocess.run(cmd, check=True, cwd=PROJECT_DIR)
+    result = subprocess.run(cmd, cwd=PROJECT_DIR, capture_output=True, text=True)
+    if result.returncode != 0:
+        tail = "\n".join(result.stderr.strip().splitlines()[-15:])
+        raise RuntimeError(f"PyInstaller 编译失败（退出码 {result.returncode}）：\n{tail}")
 
 
-def build_one_class(grade: str, klass: str, class_students: list) -> None:
+def build_one_class(grade: str, klass: str, class_students: list, log=print) -> str:
     class_label = f"{grade}{klass}班"
     roster = {s["name"]: s["id"] for s in class_students}
-    print(f"共 {len(roster)} 名学生（{class_label}）")
+    log(f"共 {len(roster)} 名学生（{class_label}）")
 
     roster_module_path = os.path.join(PROJECT_DIR, "roster_data.py")
     generate_roster_module(roster, class_label, roster_module_path)
@@ -125,9 +164,9 @@ def build_one_class(grade: str, klass: str, class_students: list) -> None:
     exe_name = f"{safe_label}自动登录程序"
     dist_dir = os.path.join(PROJECT_DIR, "dist_output", safe_label)
 
-    print(f"正在编译 {exe_name}.exe ，请稍候……")
+    log(f"正在编译 {exe_name}.exe ，请稍候……")
     try:
-        run_pyinstaller(exe_name, dist_dir)
+        run_pyinstaller(exe_name, dist_dir, log=log)
     finally:
         if os.path.exists(roster_module_path):
             os.remove(roster_module_path)
@@ -138,7 +177,8 @@ def build_one_class(grade: str, klass: str, class_students: list) -> None:
         with open(login_code_path, "w", encoding="utf-8") as f:
             f.write("请填写本班当前有效的便捷登录码")
 
-    print(f"完成：{exe_path}")
+    log(f"完成：{exe_path}")
+    return exe_path
 
 
 def main():
