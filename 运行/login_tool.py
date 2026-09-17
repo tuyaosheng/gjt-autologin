@@ -3,6 +3,7 @@
 
 import os
 import sys
+import threading
 import tkinter as tk
 from collections import Counter
 from tkinter import messagebox
@@ -53,6 +54,7 @@ def do_login(id_number: str, login_code: str) -> None:
 
     options = Options()
     options.add_experimental_option("detach", True)  # 程序退出后浏览器保持打开
+    options.page_load_strategy = "eager"  # 不等图片/样式加载完，DOM 一可交互就返回，加快启动
 
     local_driver = os.path.join(app_dir(), "msedgedriver.exe")
     if os.path.exists(local_driver):
@@ -76,6 +78,13 @@ def do_login(id_number: str, login_code: str) -> None:
     code_input = driver.find_element(By.CSS_SELECTOR, "input[placeholder='请输入便捷登录码']")
     code_input.clear()
     code_input.send_keys(login_code)
+
+    # 不能调用 driver.quit()：即使开了 detach，quit() 仍会把浏览器一起关掉。
+    # 直接杀掉驱动进程本身，浏览器窗口不受影响，避免机房电脑上残留大量后台驱动进程。
+    try:
+        driver.service.process.kill()
+    except Exception:
+        pass
 
 
 class App(tk.Tk):
@@ -101,14 +110,16 @@ class App(tk.Tk):
         self.listbox.pack(fill="both", expand=True, padx=16, pady=8)
         self._refresh_list(self.all_names)
 
-        tk.Button(
+        self.login_btn = tk.Button(
             self,
             text="登录",
             command=self._on_login,
             font=("Microsoft YaHei", 12),
             bg="#1a73e8",
             fg="white",
-        ).pack(fill="x", padx=16, pady=(0, 16))
+        )
+        self.login_btn.pack(fill="x", padx=16, pady=(0, 16))
+        self._logging_in = False
 
     def _refresh_list(self, names):
         self.listbox.delete(0, tk.END)
@@ -123,6 +134,9 @@ class App(tk.Tk):
             self._refresh_list([n for n in self.all_names if keyword in n])
 
     def _on_login(self):
+        if self._logging_in:
+            return  # 防止界面卡顿期间被连续点击，重复开出多个浏览器
+
         selection = self.listbox.curselection()
         if not selection:
             messagebox.showwarning("提示", "请先在列表中选择你的姓名")
@@ -139,10 +153,26 @@ class App(tk.Tk):
             messagebox.showerror("错误", "登录码文件内容为空，请联系老师确认 login_code.txt")
             return
 
-        try:
-            do_login(id_number, login_code)
-        except Exception as e:
-            messagebox.showerror("登录出错", f"自动登录过程中出现问题：\n{e}")
+        self._logging_in = True
+        self.login_btn.config(state="disabled", text="正在打开浏览器，请稍候…")
+
+        def worker():
+            try:
+                do_login(id_number, login_code)
+            except Exception as e:
+                self.after(0, self._on_login_failed, e)
+            else:
+                self.after(0, self._on_login_success)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_login_success(self):
+        self.destroy()  # 浏览器已经打开好了，选人窗口没用了，直接关掉
+
+    def _on_login_failed(self, error):
+        self._logging_in = False
+        self.login_btn.config(state="normal", text="登录")
+        messagebox.showerror("登录出错", f"自动登录过程中出现问题：\n{error}")
 
 
 def main():
