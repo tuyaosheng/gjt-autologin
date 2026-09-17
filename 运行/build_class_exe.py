@@ -122,7 +122,7 @@ def build_one_class(grade: str, klass: str, class_students: list) -> None:
     generate_roster_module(roster, class_label, roster_module_path)
 
     safe_label = sanitize_filename(class_label)
-    exe_name = f"login_tool_{safe_label}"
+    exe_name = f"{safe_label}自动登录程序"
     dist_dir = os.path.join(PROJECT_DIR, "dist_output", safe_label)
 
     print(f"正在编译 {exe_name}.exe ，请稍候……")
