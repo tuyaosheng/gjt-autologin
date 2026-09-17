@@ -77,11 +77,6 @@ def do_login(id_number: str, login_code: str) -> None:
     code_input.clear()
     code_input.send_keys(login_code)
 
-    messagebox.showinfo(
-        "请完成验证码",
-        "已自动填好证件号码和便捷登录码。\n请在浏览器中查看图形验证码并手动输入，然后点击登录。",
-    )
-
 
 class App(tk.Tk):
     def __init__(self, class_label: str, roster: dict):
