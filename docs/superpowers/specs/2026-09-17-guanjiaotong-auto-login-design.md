@@ -63,6 +63,18 @@
 
 机房电脑之间无共享网络盘，第 3 步的物理拷贝无法省略；但第 1-2 步把"手动改几十个 txt"简化成"改一张表 + 跑一次脚本"。全程**不需要重新构建或重新分发 exe**。
 
+### 5. 教师端图形管理面板（`manage_panel.py`）
+
+把 `build_class_exe.py`（生成）和 `update_login_codes.py`（更新登录码）包在同一个 Tkinter 窗口里，供不想用命令行的老师使用：多选班级列表 + "开始生成"按钮对应第 1 项，"读取并更新登录码"按钮对应第 4 项，两者共用一个滚动日志区，都在后台线程执行，避免界面卡住。
+
+关键限制：即使把 `manage_panel.py` 也打包成 `manage_panel.exe`，"生成登录程序"这一步仍然需要**这台电脑本身**装有 Python + PyInstaller——因为这一步的本质是现场调用 PyInstaller 编译出新的学生端 exe，编译动作本身没法被"打包"绕开。这是经用户确认接受的取舍（见 2026-09-17 对话），因此：
+
+- `build_class_exe.py` 不能再用 `sys.executable` 去调 PyInstaller（一旦被冻结进 `manage_panel.exe`，`sys.executable` 指向的是 `manage_panel.exe` 自己），改为用 `shutil.which("python")` 去找系统里真正的 Python。
+- 所有需要"知道自己在哪个文件夹"的模块（`login_tool.py`、`build_class_exe.py`、`update_login_codes.py`）统一改用 `paths.app_dir()`：未打包时用 `__file__` 所在目录，打包后用 `sys.executable` 所在目录——避免这些模块被 `manage_panel.exe` 引入后，`__file__` 解析到 PyInstaller 的临时解压目录而找错文件夹。
+- 面板通过读表头（`classify_xlsx`）自动区分总表和登录码表，不需要老师手动指定哪个文件是哪个。
+
+学生端 exe 和管理面板的图标都用程序生成（`login_icon.ico` 蓝底对勾、`panel_icon.ico` 深色仪表盘），不依赖外部下载。
+
 ## 已知限制
 
 1. **验证码无法绕过**：这是网站自身的安全机制（防自动化爆破），工具只自动填前两项，验证码必须学生本人手动输入后点击登录。这是与用户确认过的"半自动"方案，优点是不因网站更换验证码样式而失效。
