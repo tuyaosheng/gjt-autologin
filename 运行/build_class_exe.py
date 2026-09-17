@@ -56,14 +56,19 @@ def load_students(xlsx_path: str):
     return students
 
 
-def choose_from_list(prompt: str, options: list) -> int:
+def choose_from_list(prompt: str, options: list, allow_all: bool = False) -> "int | str":
     for i, opt in enumerate(options, 1):
         print(f"  {i}. {opt}")
     while True:
         raw = input(prompt).strip()
+        if allow_all and raw.lower() == "all":
+            return "all"
         if raw.isdigit() and 1 <= int(raw) <= len(options):
             return int(raw) - 1
-        print("输入无效，请重新输入编号。")
+        if allow_all:
+            print("输入无效，请重新输入编号，或输入 all 编译所有班级。")
+        else:
+            print("输入无效，请重新输入编号。")
 
 
 def sanitize_filename(text: str) -> str:
@@ -108,35 +113,7 @@ def run_pyinstaller(exe_name: str, dist_dir: str):
     subprocess.run(cmd, check=True, cwd=PROJECT_DIR)
 
 
-def main():
-    candidates = find_xlsx_candidates()
-    if not candidates:
-        print("未在当前目录找到任何 .xlsx 总表文件。")
-        return
-    if len(candidates) == 1:
-        xlsx_path = os.path.join(PROJECT_DIR, candidates[0])
-        print(f"使用表格：{candidates[0]}")
-    else:
-        print("找到多个表格：")
-        idx = choose_from_list("请选择要使用的表格编号：", candidates)
-        xlsx_path = os.path.join(PROJECT_DIR, candidates[idx])
-
-    students = load_students(xlsx_path)
-    if not students:
-        print("表格中没有读到有效学生数据。")
-        return
-
-    combos = sorted({(s["grade"], s["class"]) for s in students})
-    print("可选班级：")
-    combo_labels = [f"{grade} {klass}班" for grade, klass in combos]
-    idx = choose_from_list("请输入班级编号：", combo_labels)
-    grade, klass = combos[idx]
-
-    class_students = [s for s in students if s["grade"] == grade and s["class"] == klass]
-    if not class_students:
-        print("该班级没有学生数据。")
-        return
-
+def build_one_class(grade: str, klass: str, class_students: list) -> None:
     class_label = f"{grade}{klass}班"
     roster = {s["name"]: s["id"] for s in class_students}
     print(f"共 {len(roster)} 名学生（{class_label}）")
@@ -161,9 +138,61 @@ def main():
         with open(login_code_path, "w", encoding="utf-8") as f:
             f.write("请填写本班当前有效的便捷登录码")
 
-    print("\n完成！请把下面两个文件一起拷贝到该班机房电脑的桌面：")
-    print(f"  1. {exe_path}")
-    print(f"  2. {login_code_path}")
+    print(f"完成：{exe_path}")
+
+
+def main():
+    candidates = find_xlsx_candidates()
+    if not candidates:
+        print("未在当前目录找到任何 .xlsx 总表文件。")
+        return
+    if len(candidates) == 1:
+        xlsx_path = os.path.join(PROJECT_DIR, candidates[0])
+        print(f"使用表格：{candidates[0]}")
+    else:
+        print("找到多个表格：")
+        idx = choose_from_list("请选择要使用的表格编号：", candidates)
+        xlsx_path = os.path.join(PROJECT_DIR, candidates[idx])
+
+    students = load_students(xlsx_path)
+    if not students:
+        print("表格中没有读到有效学生数据。")
+        return
+
+    combos = sorted({(s["grade"], s["class"]) for s in students})
+    print("可选班级：")
+    combo_labels = [f"{grade} {klass}班" for grade, klass in combos]
+    choice = choose_from_list("请输入班级编号（输入 all 可一次性编译所有班级）：", combo_labels, allow_all=True)
+
+    if choice == "all":
+        total = len(combos)
+        failed = []
+        for i, (grade, klass) in enumerate(combos, 1):
+            class_students = [s for s in students if s["grade"] == grade and s["class"] == klass]
+            if not class_students:
+                continue
+            print(f"\n[{i}/{total}] {grade}{klass}班")
+            try:
+                build_one_class(grade, klass, class_students)
+            except Exception as e:
+                print(f"  编译失败：{e}")
+                failed.append(f"{grade}{klass}班")
+
+        print(f"\n全部完成：{total - len(failed)}/{total} 个班级编译成功。")
+        if failed:
+            print("以下班级编译失败，请单独重新运行处理：")
+            for label in failed:
+                print(f"  - {label}")
+        return
+
+    grade, klass = combos[choice]
+    class_students = [s for s in students if s["grade"] == grade and s["class"] == klass]
+    if not class_students:
+        print("该班级没有学生数据。")
+        return
+
+    build_one_class(grade, klass, class_students)
+    print("请把生成的 exe 和 login_code.txt 一起拷贝到该班机房电脑的桌面。")
 
 
 if __name__ == "__main__":
