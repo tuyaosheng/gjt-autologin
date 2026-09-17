@@ -1,6 +1,7 @@
 """学生端登录助手：学生选择姓名后，自动打开浏览器并填好证件号码/便捷登录码，
 验证码留给学生本人查看并手动输入。"""
 
+import ctypes
 import os
 import sys
 import threading
@@ -16,6 +17,15 @@ LOGIN_URL = (
     "%2Ftpass%2Foauth2.0%2FcallbackAuthorize%3Fsession_state"
     "%3DA9D5AF6BF81E98A30182F742CACBA289"
 )
+
+_SINGLE_INSTANCE_MUTEX_NAME = "GuanJiaoTong_LoginHelper_SingleInstance"
+_ERROR_ALREADY_EXISTS = 183
+
+
+def acquire_single_instance_lock() -> bool:
+    """同一台电脑上只允许一个登录助手在运行；进程结束后系统会自动释放这个锁。"""
+    ctypes.windll.kernel32.CreateMutexW(None, False, _SINGLE_INSTANCE_MUTEX_NAME)
+    return ctypes.windll.kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
 
 
 def app_dir() -> str:
@@ -176,6 +186,13 @@ class App(tk.Tk):
 
 
 def main():
+    if not acquire_single_instance_lock():
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showwarning("提示", "登录助手已经在运行了，请直接使用已经打开的窗口，不要重复打开程序。")
+        root.destroy()
+        return
+
     roster = decode_roster(roster_data.ENCODED_ROSTER)
     app = App(roster_data.CLASS_LABEL, roster)
     app.mainloop()
