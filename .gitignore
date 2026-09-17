@@ -17,4 +17,4 @@ __pycache__/
 build/
 dist/
 *.spec
-运行/管理面板.exe
+运行/*.exe
