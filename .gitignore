@@ -4,9 +4,11 @@
 students.dat
 login_code.txt
 
-# 导出的班级包（含真实学生数据）
+# 导出的班级包/编译产物（含真实学生数据，编译进exe内的编码名单）
 班级包/
 dist_packages/
+dist_output/
+build_tmp/
 
 # Python / 打包产物
 __pycache__/
