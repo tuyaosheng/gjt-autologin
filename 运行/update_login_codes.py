@@ -48,6 +48,15 @@ def load_codes(xlsx_path: str) -> dict:
     return codes
 
 
+def write_code_table_template(path: str) -> None:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "便捷登录码"
+    ws.append(["班级", "便捷登录码"])
+    ws.append(["七年级1班", "12345678"])
+    wb.save(path)
+
+
 def apply_codes(codes: dict) -> tuple:
     """把 {班级: 登录码} 写进各班 dist_output 文件夹，返回 (已更新班级列表, 找不到文件夹的班级列表)。"""
     updated, missing = [], []

@@ -43,6 +43,15 @@ def classify_xlsx(xlsx_path: str) -> str:
     return "unknown"
 
 
+def write_roster_template(path: str) -> None:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "学生名单"
+    ws.append(REQUIRED_COLUMNS)
+    ws.append(["七年级", 1, "示例-张三", "110101201501011234"])
+    wb.save(path)
+
+
 def find_system_python() -> str:
     """查找系统里真正的 Python 解释器（不能用 sys.executable ——
     manage_panel 打包成 exe 后 sys.executable 会指向自己，而不是 Python）。"""

@@ -10,7 +10,7 @@ import queue
 import subprocess
 import threading
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 
 import build_class_exe as builder
 import update_login_codes as coder
@@ -40,6 +40,8 @@ class App(tk.Tk):
         self.busy = False
         self.students = []
         self.class_combos = []
+        self.roster_path = None
+        self.code_path = None
 
         self._build_ui()
         self._refresh_all()
@@ -67,6 +69,13 @@ class App(tk.Tk):
         self.roster_label = tk.Label(gen_box, text="", font=("Microsoft YaHei", 10),
                                       bg=BG, anchor="w", justify="left")
         self.roster_label.pack(fill="x")
+
+        roster_btn_row = tk.Frame(gen_box, bg=BG)
+        roster_btn_row.pack(fill="x", pady=(4, 0))
+        tk.Button(roster_btn_row, text="浏览选择总表…", command=self._browse_roster).pack(side="left")
+        tk.Button(roster_btn_row, text="下载空白模板…", command=self._download_roster_template).pack(
+            side="left", padx=(6, 0)
+        )
 
         list_frame = tk.Frame(gen_box, bg=BG)
         list_frame.pack(fill="both", expand=True, pady=(8, 6))
@@ -98,6 +107,13 @@ class App(tk.Tk):
                                     bg=BG, anchor="w", justify="left")
         self.code_label.pack(fill="x")
 
+        code_file_btn_row = tk.Frame(code_box, bg=BG)
+        code_file_btn_row.pack(fill="x", pady=(4, 0))
+        tk.Button(code_file_btn_row, text="浏览选择登录码表格…", command=self._browse_code_table).pack(side="left")
+        tk.Button(code_file_btn_row, text="下载空白模板…", command=self._download_code_template).pack(
+            side="left", padx=(6, 0)
+        )
+
         code_btn_row = tk.Frame(code_box, bg=BG)
         code_btn_row.pack(fill="x", pady=(8, 0))
         self.update_button = tk.Button(
@@ -116,6 +132,9 @@ class App(tk.Tk):
     # ---------------- 状态刷新 ----------------
 
     def _refresh_all(self):
+        """重新扫描项目目录，找回自动检测到的表格（忽略之前手动浏览选择的路径）。"""
+        self.roster_path = None
+        self.code_path = None
         self._refresh_roster_info()
         self._refresh_code_table_info()
 
@@ -124,25 +143,26 @@ class App(tk.Tk):
         return [n for n in names if builder.classify_xlsx(os.path.join(PROJECT_DIR, n)) == kind]
 
     def _refresh_roster_info(self):
-        matches = self._list_by_kind("roster")
+        if self.roster_path is None:
+            matches = self._list_by_kind("roster")
+            if matches:
+                if len(matches) > 1:
+                    self._append_log(f"检测到 {len(matches)} 张疑似总表，自动使用「{matches[0]}」，"
+                                      "如果用错了可以点“浏览选择总表”手动指定。")
+                self.roster_path = os.path.join(PROJECT_DIR, matches[0])
+
         self.class_listbox.delete(0, "end")
         self.students = []
         self.class_combos = []
 
-        if not matches:
-            self.roster_label.config(text="⚠ 未找到学生总表（需要包含：年级 / 班级 / 姓名 / 身份证号码 列）")
+        if self.roster_path is None:
+            self.roster_label.config(text="⚠ 未找到学生总表（需要包含：年级 / 班级 / 姓名 / 身份证号码 列），"
+                                           "可以点右边按钮下载模板或浏览选择")
             return
 
-        roster_name = matches[0]
-        if len(matches) > 1:
-            self.roster_label.config(
-                text=f"检测到 {len(matches)} 张疑似总表，使用「{roster_name}」——建议目录下只保留一份总表，避免用错"
-            )
-        else:
-            self.roster_label.config(text=f"学生总表：{roster_name}")
-
+        self.roster_label.config(text=f"学生总表：{os.path.basename(self.roster_path)}")
         try:
-            self.students = builder.load_students(os.path.join(PROJECT_DIR, roster_name))
+            self.students = builder.load_students(self.roster_path)
         except Exception as e:
             self.roster_label.config(text=f"⚠ 读取总表出错：{e}")
             return
@@ -152,13 +172,61 @@ class App(tk.Tk):
             self.class_listbox.insert("end", f"{grade}{klass}班")
 
     def _refresh_code_table_info(self):
-        matches = self._list_by_kind("codes")
-        if not matches:
-            self.code_label.config(text="⚠ 未找到便捷登录码表格（需要包含：班级 / 便捷登录码 列）")
-        elif len(matches) > 1:
-            self.code_label.config(text=f"检测到 {len(matches)} 张疑似登录码表，使用「{matches[0]}」")
+        if self.code_path is None:
+            matches = self._list_by_kind("codes")
+            if matches:
+                if len(matches) > 1:
+                    self._append_log(f"检测到 {len(matches)} 张疑似登录码表，自动使用「{matches[0]}」，"
+                                      "如果用错了可以点“浏览选择登录码表格”手动指定。")
+                self.code_path = os.path.join(PROJECT_DIR, matches[0])
+
+        if self.code_path is None:
+            self.code_label.config(text="⚠ 未找到便捷登录码表格（需要包含：班级 / 便捷登录码 列），"
+                                         "可以点右边按钮下载模板或浏览选择")
         else:
-            self.code_label.config(text=f"登录码表格：{matches[0]}")
+            self.code_label.config(text=f"登录码表格：{os.path.basename(self.code_path)}")
+
+    def _browse_roster(self):
+        path = filedialog.askopenfilename(title="选择学生总表", filetypes=[("Excel 表格", "*.xlsx")])
+        if not path:
+            return
+        self.roster_path = path
+        self._refresh_roster_info()
+
+    def _browse_code_table(self):
+        path = filedialog.askopenfilename(title="选择便捷登录码表格", filetypes=[("Excel 表格", "*.xlsx")])
+        if not path:
+            return
+        self.code_path = path
+        self._refresh_code_table_info()
+
+    def _download_roster_template(self):
+        path = filedialog.asksaveasfilename(
+            title="保存学生总表模板", defaultextension=".xlsx",
+            initialfile="学生总表模板.xlsx", filetypes=[("Excel 表格", "*.xlsx")],
+        )
+        if not path:
+            return
+        try:
+            builder.write_roster_template(path)
+            self._append_log(f"已保存学生总表模板：{path}")
+            messagebox.showinfo("完成", "模板已保存，填好真实数据后用“浏览选择总表”打开它。")
+        except Exception as e:
+            messagebox.showerror("错误", f"保存模板失败：{e}")
+
+    def _download_code_template(self):
+        path = filedialog.asksaveasfilename(
+            title="保存便捷登录码表格模板", defaultextension=".xlsx",
+            initialfile="便捷登录码模板.xlsx", filetypes=[("Excel 表格", "*.xlsx")],
+        )
+        if not path:
+            return
+        try:
+            coder.write_code_table_template(path)
+            self._append_log(f"已保存便捷登录码模板：{path}")
+            messagebox.showinfo("完成", "模板已保存，填好每个班的登录码后用“浏览选择登录码表格”打开它。")
+        except Exception as e:
+            messagebox.showerror("错误", f"保存模板失败：{e}")
 
     def _check_env(self):
         try:
@@ -255,11 +323,10 @@ class App(tk.Tk):
     def _on_update_codes(self):
         if self.busy:
             return
-        matches = self._list_by_kind("codes")
-        if not matches:
-            messagebox.showerror("错误", "未找到便捷登录码表格（需要包含：班级 / 便捷登录码 列）")
+        if self.code_path is None:
+            messagebox.showerror("错误", "还没有登录码表格，请先“浏览选择登录码表格”或下载模板填写。")
             return
-        code_path = os.path.join(PROJECT_DIR, matches[0])
+        code_path = self.code_path
 
         self._set_busy(True)
         self.update_button.config(text="更新中…")
